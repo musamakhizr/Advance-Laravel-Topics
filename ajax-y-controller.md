@@ -3,6 +3,7 @@
 - [Steps](#steps)
 - [Optimization Techniques](#optimization-techniques)
 - [Dynamic Ajax Controller](#dynamic-ajax-controller)
+- [For AXIOS](#for-axios)
 
 ## Steps
 
@@ -242,7 +243,7 @@ class AjaxController extends Controller
                         $query->where($field, '=', $value);
                     }
                 }
-                
+
                 // Add any query parameters here
                 if ($request->has('filter')) {
                     $query->where('name', 'like', '%' . $request->input('filter') . '%');
@@ -335,3 +336,104 @@ class UserService
 This service class provides several methods for handling user-related data, including getting all users, getting a user by ID, creating a user, updating a user, and deleting a user.
 
 By separating your business logic and data manipulation into a service layer, you can keep your controller clean and focused on handling the API request and returning a response. This can help improve the maintainability and readability of your code.
+
+
+---
+
+## For AXIOS
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Models\Post;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+
+class AjaxController extends Controller
+{
+    public function handleRequest(Request $request)
+    {
+        // Get the current user
+        $user = Auth::user();
+
+        // Define the cache key
+        $cacheKey = 'posts_' . $user->id . '_' . serialize($request->all());
+
+        // Check if the data is cached
+        if (Cache::has($cacheKey)) {
+            $data = Cache::get($cacheKey);
+        } else {
+            // Start with the base query
+            $query = Post::query();
+
+            // Apply any filters
+            if ($request->has('filter')) {
+                foreach ($request->get('filter') as $field => $value) {
+                    $query->where($field, '=', $value);
+                }
+            }
+
+            // Apply any sorting
+            if ($request->has('sort')) {
+                $query->orderBy($request->get('sort'));
+            }
+
+            // Apply field limiting
+            if ($request->has('fields')) {
+                $fields = explode(',', $request->get('fields'));
+                $query->select($fields);
+            }
+
+            // Apply eager loading
+            if ($request->has('with')) {
+                $with = explode(',', $request->get('with'));
+                $query->with($with);
+            }
+
+            // Get the data and cache it
+            $data = $query->paginate(10);
+            Cache::put($cacheKey, $data, 60);
+
+            // Log the query
+            \Log::info($query->toSql());
+        }
+
+        // Return the data as JSON
+        return response()->json($data);
+    }
+}
+
+```
+
+`To make a request to this endpoint using Axios, you can use the following example code:`
+
+```javascript
+axios.get('/posts', {
+    params: {
+        filter: {
+            published: true
+        },
+        sort: 'created_at',
+        fields: 'id,title,created_at',
+        with: 'comments'
+    }
+})
+.then(response => {
+    console.log(response.data);
+})
+.catch(error => {
+    console.log(error.response.data);
+});
+
+```
+
+This example makes a GET request to the /posts endpoint with the following parameters:
+
+filter: an object that filters posts by the published field set to true
+sort: sorts posts by the created_at field
+fields: limits the fields returned to id, title, and created_at
+with: eager loads the comments relationship
+The response data is logged to the console, while any errors are also logged.
